@@ -149,7 +149,6 @@
     <ClInclude Include="dll_injector.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
-    <ClInclude Include="useful_functions.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Cheat_Engine_project.c" />
@@ -160,7 +159,11 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="useful_functions.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\main_and_dll_connection\main_and_dll_connection.vcxproj">
+      <Project>{af97d2de-f884-4d15-af43-c011a7519489}</Project>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

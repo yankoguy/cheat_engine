@@ -3,4 +3,4 @@
 
 #include <Windows.h>
 
-void inject_dll(char* pName);
+int inject_dll(char* pName);

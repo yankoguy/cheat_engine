@@ -11,8 +11,6 @@
 #include <conio.h>
 #include <tchar.h>
 
-#define MAX_COMMAND_LENGHT 100
-#define BUF_SIZE 256
 #define SHARED_MEMORY_FILE_NAME "myFile"
 #define END_STREAM_TOKEN '!' //Char that indicates the end of memory transferring
 
@@ -20,10 +18,11 @@ void processCommand(char** parsed_str, int argc);
 void ProcessDllCommand(char** parsed_str, int argc, char* pBuf);
 void scan(char** parsed_str, int argc, char* pBuf);
 void help(char** parsed_str, int argc);
-char* GetUserInput(int argc);
+char* GetUserInput();
+void start_injection(char ** parsedString, int* state);
 LPSTR CreateSharedMemory();
 HANDLE start(char** parsed_str, int argc);
-
+char* GetRawUserInput();
 void program_loop();
 
 
@@ -31,7 +30,7 @@ enum STATE { COMMAND_STATE, DLL_STATE };
 
 
 int main()
-{
+{	
 	program_loop();
 	return 0;
 }
@@ -47,7 +46,7 @@ void program_loop()
 
 	while (1)
 	{
-		inputBuff = GetUserInput(argc);
+		inputBuff = GetUserInput();
 		parsedString = parse_string(inputBuff, ' ', &argc);
 		switch (state)
 		{
@@ -58,8 +57,7 @@ void program_loop()
 		{
 			if (strcmp(parsedString[0], "start") == 0) //check if user typed start which means he now on the DLL_STATE (dll was injected)
 			{
-				inject_dll(parsedString[1]);
-				state = DLL_STATE;
+				start_injection(parsedString,&state);
 			}
 			processCommand(parsedString, argc);
 			break;
@@ -84,6 +82,16 @@ void program_loop()
 
 }
 
+
+void start_injection(char ** parsedString, int* state)
+{
+
+	if (inject_dll(parsedString[1]) == 1)
+	{
+		printf("dll injected\n");
+		*state = DLL_STATE;
+	}
+}
 void ProcessDllCommand(char** parsed_str, int argc, char* pBuf)
 {
 	if (strcmp(parsed_str[0], "scan") == 0)
@@ -99,16 +107,52 @@ void processCommand(char** parsed_str, int argc)
 		help(parsed_str, argc - 1);
 	}
 }
-char* GetUserInput(int argc)
+
+
+char* GetUserInput()
 {
-	char* buff = (char*)(malloc(MAX_COMMAND_LENGHT));
+	//remove unneccery spaces
+	char* buff = (char*)(malloc(BUFF_SIZE));
+	char* rawBuff = GetRawUserInput();
+	int counter = 0;
+	if (rawBuff[0] != ' ')
+	{
+		buff[0] = rawBuff[0];
+		counter++;
+	}
+	for (int i = 1; rawBuff[i] != '\0'; i++)
+	{
+		if (rawBuff[i] != ' ' || rawBuff[i-1] != ' ')
+		{
+			buff[counter] = rawBuff[i];
+			counter++;
+		}
+	}
+	buff[counter] = '\0';
+	free(rawBuff);
+	return buff;
+
+}
+
+char* GetRawUserInput()
+{
+	char* buff = (char*)(malloc(BUFF_SIZE));
 	int c;
 	int count = 0;
 	printf("Enter your command: ");
 
-	while ((c = getchar()) != EOF && c != '\n' && count < MAX_COMMAND_LENGHT - 1) {
-		buff[count] = c;
-		count += 1;
+	while ((c = getchar()) != EOF && c != '\n') 
+	{
+		if (count < BUFF_SIZE - 1) {
+			buff[count] = c;
+			count += 1;
+		}
+		else 
+		{
+			printf("You can only enter %d chars\n", BUFF_SIZE);
+			break;
+		}
+
 	}
 	if (count == 0)
 	{
@@ -126,21 +170,19 @@ char* GetUserInput(int argc)
 
 void scan(char** parsed_str, int argc,char* pBuf)
 {
-	for (int i = 1; i < argc; i++)
+	for (int i = 0; i < argc; i++)
 	{
-		memcpyToEnd(pBuf, parsed_str[i], strlen(parsed_str[i])); //add one more place
-		//memset(pBuf + i, ' ', 1); //change this place to space
+		memcpyToEnd(pBuf, parsed_str[i], 1 + strlen(parsed_str[i]),BUFF_SIZE); //add one more place
+		memset(pBuf + strlen(pBuf), ' ', 1); //change this place to space
 
 	}
-	for (int  i = 0; i < BUF_SIZE; i++)
+	for (int  i = 0; i < BUFF_SIZE; i++)
 	{
 		if (pBuf[i] == '\0') {
 			memset(pBuf + i , END_STREAM_TOKEN, 1); //Add token at the end of the line in oreder to indecte the line is over
 			break;
 		}
 	}
-
-	printf(pBuf);
 
 }
 
@@ -157,7 +199,7 @@ LPSTR CreateSharedMemory() {
 		PAGE_READWRITE, // read access
 		0, // maximum object size (high-order
 		   // DWORD)
-		BUF_SIZE, // maximum object size (low-order
+		BUFF_SIZE, // maximum object size (low-order
 				  // DWORD)
 
 		SHARED_MEMORY_FILE_NAME);

@@ -4,6 +4,7 @@
 #include "useful_functions.h"
 #include <stdlib.h>
 
+
 char* slice_string(const char* str, int start, int end) {
 	/*Malloc a new buffer whihc contanis a slices string*/
 	char* buffer = (char*)malloc(end-start + 2);
@@ -31,25 +32,31 @@ char** parse_string(const char* str, const char token, int* argc) {
 
 	if (argv == NULL) {
 		printf("Error! memory not allocated.");
-		exit(0);
+		return NULL;
 	}
 
 	char* new_str;
 	for (int i = 0; i < strlen(str); i++)
-	{
-		if (str[i] == token) 
-		{
-			new_str = slice_string(str, last_slice, i-1);
-			argv[*argc] = new_str;
-			last_slice = i+1;
-			*argc += 1;
-		}
-		else if (i == strlen(str) - 1) /*i==strlen(str)-1 to slace also the last one*/
-		{
-			new_str = slice_string(str, last_slice, i);
-			argv[*argc] = new_str;
-			*argc += 1;
+	{ 
+		if (*argc < MAX_NUMBER_OF_PARAMERTERS) {
+			if (str[i] == token)
+			{
+				new_str = slice_string(str, last_slice, i - 1);
+				argv[*argc] = new_str;
+				last_slice = i + 1;
+				*argc += 1;
+			}
+			else if (i == strlen(str) - 1) /*i==strlen(str)-1 to slace also the last one*/
+			{
+				new_str = slice_string(str, last_slice, i);
+				argv[*argc] = new_str;
+				*argc += 1;
 
+			}
+		}
+		else {
+			printf("You entered too many parametrs - you can only enter %d",MAX_NUMBER_OF_PARAMERTERS-1);
+			return argv;
 		}
 	}
 	return argv;
@@ -57,13 +64,16 @@ char** parse_string(const char* str, const char token, int* argc) {
 
 
 
-void memcpyToEnd(char* dest, const char* src, int size) 
+void memcpyToEnd(char* dest, const char* src, int size, int max_size) 
 {
 	//memcpy that writes to the end of the buffer
-	int lenght=0;
+	int length =0;
 	for (int i = 0; dest[i] != '\0'; i++)
 	{
-		lenght += 1;
+		length += 1;
 	}
-	memcpy(dest + lenght, src, size);
+	if (length + strlen(src) < max_size) 
+	{
+		memcpy(dest + length, src, size);
+	}
 }
