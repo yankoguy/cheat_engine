@@ -30,6 +30,9 @@
     <ClInclude Include="dll_injector.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="MemoryScanner.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.c">
@@ -39,6 +42,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Cheat_Engine_project.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="MemoryScanner.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

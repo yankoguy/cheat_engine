@@ -7,15 +7,13 @@
 #include <tlhelp32.h>
 #include <errno.h>
 #include "Cheat_Engine_project.h"
+#include "core_parameters.h"
 
 typedef void(*PFUNC)(void);
 
-DWORD FindProcessId(const char *  processname);
-
-
 int inject_dll(char* pName)
 {						
-	CHAR* dll_path = "C:\\Users\\Maor\\Documents\\Visual Studio 2015\\Projects\\\Cheat_Engine_project\\Debug\\CE_dll.dll";
+	CHAR* dll_path = "C:\\Users\\Maor\\Documents\\Visual Studio 2015\\Projects\\Cheat_Engine_project\\Debug\\CE_dll.dll";
 	// Get LoadLibrary function address –	
 	// the address doesn't change at remote process
 	PVOID addrLoadLibrary =
@@ -43,7 +41,7 @@ int inject_dll(char* pName)
 
 	// Get a pointer to memory location in remote process,
 	// big enough to store DLL path
-	PVOID memAddr = (PVOID)VirtualAllocEx(proc, 0, BUFF_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	PVOID memAddr = (PVOID)VirtualAllocEx(proc, 0, BUF_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	if (NULL == memAddr) {
 		printf("ERROR in VirtualAllocEx\n");
 		return 0;
@@ -89,14 +87,14 @@ DWORD FindProcessId(const char *processname)
 	if (!Process32First(hProcessSnap, &pe32))
 	{
 		CloseHandle(hProcessSnap);          // clean the snapshot object
-		printf("!!! Failed to gather information on system processes! \n");
+		printf("Failed to gather information on system processes! \n");
 		return(0);
 	}
 
 	do
 	{
 		//printf("Checking process %ls\n", pe32.szExeFile);
-		wchar_t  ws[BUFF_SIZE];
+		wchar_t  ws[BUF_SIZE];
 		size_t outSize;
 		size_t size = strlen(processname) + 1;
 
@@ -109,6 +107,10 @@ DWORD FindProcessId(const char *processname)
 	} while (Process32Next(hProcessSnap, &pe32));
 
 	CloseHandle(hProcessSnap);
+
+	if (result == 0) {
+		printf("Error in FindProcessId - could not find the pid for this process");
+	}
 
 	return result;
 }
