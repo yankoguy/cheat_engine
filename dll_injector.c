@@ -99,7 +99,7 @@ DWORD FindProcessId(const char *processname)
 		size_t size = strlen(processname) + 1;
 
 		mbstowcs_s(&outSize, ws, size, processname, size-1);
-		if (0 == wcscmp (ws, pe32.szExeFile))
+		if (wcscmp(ws, pe32.szExeFile) == 0)
 		{
 			result = pe32.th32ProcessID;
 			break;

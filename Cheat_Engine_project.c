@@ -13,8 +13,11 @@
 #include "utilities.h"
 #include "core_parameters.h"
 
+enum ACTION { NO_ACTION, SCAN, CHANGE, FILTER };
+enum STATE { COMMAND_STATE, DLL_STATE };
+
 void processCommand(char** parsed_str, int argc);
-void ProcessDllCommand(char** parsed_str, int argc, char* pBuf, SCAN_INFORMATION* info);
+int ProcessDllCommand(char* opcode, int argc);
 void scan(char** parsed_str, int argc, char* pBuf);
 void help(char** parsed_str, int argc);
 char* GetUserInput();
@@ -23,9 +26,7 @@ LPSTR CreateSharedMemory();
 HANDLE start(char** parsed_str, int argc);
 char* GetRawUserInput();
 void program_loop();
-
-
-enum STATE { COMMAND_STATE, DLL_STATE };
+void run_action(int action, char** parames, char* pBuf, SCAN_INFORMATION* info);
 
 
 int main()
@@ -55,7 +56,7 @@ void program_loop(SCAN_INFORMATION* info)
 		switch (state)
 		{
 		case DLL_STATE:
-			ProcessDllCommand(parsedString, argc, pBuf,info);
+			run_action(ProcessDllCommand(parsedString[0], argc),parsedString,pBuf,info);
 			break;
 		case COMMAND_STATE:
 		{
@@ -78,7 +79,7 @@ void program_loop(SCAN_INFORMATION* info)
 		for (int i = 0; i < argc; i++)
 		{
 			//		printf("free adress :  %p\n", parsed_str[i]);
-			free(parsedString[i]); //PROBLEM
+			free(parsedString[i]);
 		}
 		free(parsedString);
 	}
@@ -98,66 +99,81 @@ void start_injection(char ** parsedString, int* state)
 		*state = DLL_STATE;
 	}
 }
-void ProcessDllCommand(char** parsed_str, int argc, char* pBuf, SCAN_INFORMATION* info)
+
+int ProcessDllCommand(char* opcode ,int argc)
 {
-	if (strcmp(parsed_str[0], "scan") == 0)
+	if (strcmp(opcode, "scan") == 0)
 	{
 		if (argc == 3)
 		{
-			//scan(parsed_str, argc,pBuf);
-			if (info->addresses_list_head)
-			{
-				free_memory(info->addresses_list_head); //free the memory
-			}
-			info->addresses_list_head = ScanMemory(info->pid,parsed_str[1], parsed_str[2]);
+			return SCAN;
 		}
-		else 
+		else
 		{
 			printf("For scan command you need to type [type] [value]\n");
 		}
 	}
-	else if (strcmp(parsed_str[0], "change") == 0)
+	else if (strcmp(opcode, "change") == 0)
 	{
 		if (argc == 4)
 		{
-			//scan(parsed_str, argc,pBuf);
-			change_value(info->pid,parsed_str[1], parsed_str[2],parsed_str[3]);
+			return CHANGE;
 		}
 		else
 		{
 			printf("For change command you need to type [address] [type] [new value]\n");
 		}
 	}
-	else if (strcmp(parsed_str[0], "filter") == 0)
+	else if (strcmp(opcode, "filter") == 0)
 	{
 		if (argc == 3)
 		{
-			memoryObject* temp = info->addresses_list_head;
-			if (info->addresses_list_head)
-			{
-				info->addresses_list_head = filter();
-				free_memory(temp); //free the memory
-
-			}
-			else
-			{
-				printf("you should first make a scan\n");
-			}
+			return FILTER;
 
 		}
 		else
 		{
 			printf("For filter command you need to type [type] [value]\n");
 		}
-		
+
 	}
-			
+	return NO_ACTION;
+}
+
+void run_action(int action, char** parames, char* pBuf, SCAN_INFORMATION* info)
+{
+
+	switch (action)
+	{
+	case SCAN:
+		if (info->addresses_list_head)
+		{
+			free_memory(info->addresses_list_head); //free the memory
+		}
+		info->addresses_list_head = ScanMemory(info->pid, parames[1], parames[2]);
+		break;
+	case CHANGE:
+		change_value(info->pid, parames[1], parames[2], parames[3]);
+		break;
+	case FILTER:
+	{
+		memoryObject* temp = info->addresses_list_head;
+		if (info->addresses_list_head)
+		{
+			info->addresses_list_head = filter(info->pid, parames[1], parames[2], info->addresses_list_head->next);
+			free_memory(temp); //free the memory
+		}
+		break;
+	}
+	default:
+		printf("Pls enter the action you want to take");
+		break;
+	}	
+
 }
 
 void processCommand(char** parsed_str, int argc)
 {
-
-
 	if (strcmp(parsed_str[0], "help") == 0)
 	{
 		help(parsed_str, argc - 1);

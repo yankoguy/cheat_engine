@@ -1,18 +1,28 @@
 #include "stdafx.h"
 #include "MemoryScanner.h"
 
-memoryObject* SearchValue(MemoryBlock* first_block, memoryObject* mo_list_object, int type_length, multitype* value);
+memoryObject* SearchValue(MemoryBlock* first_block, memoryObject* mo_list_object, int type_length, multitype* value, BOOL is_string);
 int get_type_length_from_string(const char* str);
-void set_multitype(multitype* val, int type_length, char* value);
+void set_multitype(multitype* val, int type_length, char* value, BOOL is_string);
 
 
 MemoryBlock* CreateMemoryBlock(MEMORY_BASIC_INFORMATION *mbi, HANDLE hProc)
 {
 	MemoryBlock *Block = (MemoryBlock*)malloc(sizeof(MemoryBlock));
+	if (Block == NULL)
+	{
+		printf("Error in malloc");
+		exit(0);
+	}
 	Block->hProc = hProc;
 	Block->BaseAddress = mbi->BaseAddress;
 	Block->Size = mbi->RegionSize;
-	Block->Buffer = (char*)malloc(mbi->RegionSize);
+	Block->Buffer = (char*)malloc(mbi->RegionSize); 
+	if (Block->Buffer == NULL)
+	{
+		printf("Error in malloc");
+		exit(0);
+	}
 	Block->Next = NULL;
 	return Block;
 }
@@ -20,15 +30,20 @@ MemoryBlock* CreateMemoryBlock(MEMORY_BASIC_INFORMATION *mbi, HANDLE hProc)
 
 memoryObject* CreateMemoryObject(LPVOID addr, int type_lenght)
 {
-	memoryObject *Block = (memoryObject*)malloc(sizeof(memoryObject));
-	Block->addr = addr;
-	Block->type_size = type_lenght;
-	Block->next = NULL;
-	return Block;
+	memoryObject *Object = (memoryObject*)malloc(sizeof(memoryObject));
+	if (Object == NULL)
+	{
+		printf("Error in malloc");
+		exit(0);
+	}
+	Object->addr = addr;
+	Object->type_size = type_lenght;
+	Object->next = NULL;
+	return Object;
 }
 
 
-MemoryBlock* ScanProcess(int pid,HANDLE* phproc) 
+MemoryBlock* scan_proccess_memory(int pid,HANDLE* phproc) 
 {
 
 	SYSTEM_INFO si;
@@ -59,53 +74,40 @@ MemoryBlock* ScanProcess(int pid,HANDLE* phproc)
 	return firstBlock;
 }
 
-memoryObject* SearchValue(MemoryBlock* first_block, memoryObject* mo_list_object, int type_length, multitype* value)
+memoryObject* SearchValue(MemoryBlock* first_block, memoryObject* mo_list_object, int type_length, multitype* value, BOOL is_string)
 {
-	printf("starts searching...\n");
+	printf("starts searching...\n");	MemoryBlock* temp=first_block;
+
 	memoryObject* mo_list_head = mo_list_object;
 
-	int varible_length = type_length; //how much bytes you need to remove from the scan
-
-	if (varible_length == STRING_TYPE_LENGTH)
-	{
-		varible_length = strlen(((multitype*)value)->string);
-	}
+	LPVOID compared_value = (is_string) ? value->string : value;
 
 	while (first_block)
 	{
-		for (int i = 0; i <= first_block->Size - varible_length; i++)
+		for (int i = 0; i <= first_block->Size - type_length; i++)
 		{
-			if (type_length == STRING_TYPE_LENGTH)
+			//becuse strings are pointers and not "real" types they need to be treated diffrently
+			if (memcmp(first_block->Buffer + i, compared_value, type_length) == 0)
 			{
-				//becuse strings are pointers and not "real" types they need to be threated deffrently
-				if (memcmp(first_block->Buffer + i, ((multitype*)value)->string, varible_length) == 0)
-				{
-					memoryObject* mo = CreateMemoryObject((LPVOID)((LPBYTE)first_block->BaseAddress + i), varible_length);
-					mo_list_object->next = mo;
-					mo_list_object = mo;
-				}
-
+				memoryObject* mo = CreateMemoryObject((LPVOID)((LPBYTE)first_block->BaseAddress + i), type_length);
+				mo_list_object->next = mo;
+				mo_list_object = mo;
 			}
-			else
-			{
 
-				if (memcmp(first_block->Buffer + i, value, type_length) == 0)
-				{
-					memoryObject* mo = CreateMemoryObject((LPVOID)((LPBYTE)first_block->BaseAddress + i), type_length);
-					mo_list_object->next = mo;
-					mo_list_object = mo;
-				}
-			}
 		}
 		first_block = first_block->Next;
+		free(temp->Buffer);
+		free(temp);
+		temp = first_block;
 	}
 	printf("finish searching\n");
 
 	return mo_list_head;
 }
 
-int get_type_length_from_string(const char* str)
+int get_type_length_from_string(const char* str,char* value,BOOL* is_string)
 {
+	*is_string = FALSE;
 	if (strcmp(str, "char") == 0) {
 		return sizeof(char);
 	}
@@ -115,7 +117,8 @@ int get_type_length_from_string(const char* str)
 	}
 	else if (strcmp(str, "string") == 0)
 	{
-		return STRING_TYPE_LENGTH;
+		*is_string = TRUE;
+		return strlen(value);
 	}
 	return 0;
 }
@@ -123,26 +126,31 @@ int get_type_length_from_string(const char* str)
 
 
 
-void set_multitype(multitype* val, int type_length, char* value)
+void set_multitype(multitype* val, int type_length, char* value, BOOL is_string)
 {
-	switch (type_length)
+	if (is_string)
 	{
-	case sizeof(BYTE) :
-		val->byte = value[0];
-		break;
-	case sizeof(DWORD) :
-		val->dword = atoi(value);
-		break;
-
-	case STRING_TYPE_LENGTH:
 		val->string = value;
-		break;
+	}
+	else
+	{
+		switch (type_length)
+		{
+		case sizeof(BYTE) :
+			val->byte = value[0];
+			break;
+		case sizeof(DWORD) :
+			val->dword = atoi(value);
+			break;
+		}
 	}
 }
 
 
 void read_process_memory_to_buff(MemoryBlock* Block)
 {
+
+	//we need to read the remote process's memory to a buffer in order to compare it's value with the value that we scan.
 	while (Block)
 	{
 		//reads process memory
@@ -155,49 +163,53 @@ void read_process_memory_to_buff(MemoryBlock* Block)
 }
 
 
-void print_values(memoryObject* first_object,int type_length,HANDLE hProc)
+void print_values(memoryObject* first_object, int type_length, HANDLE hProc, BOOL is_string)
 {
 
 	printf("\nstart printing...\n");
 	memoryObject* temp_object = first_object->next;
-
+	//do if else
 	while (temp_object != NULL)
 	{
-		switch (type_length)
-		{
-		case sizeof(char) :
-		{
-			char value = 0;
-			ReadProcessMemory(hProc, temp_object->addr, &value, sizeof(CHAR), NULL);			printf("ADDR : 0x%p\tValue_char %C\n", temp_object->addr, value);
-
-			break;
-		}
-
-
-		case sizeof(int) :
-			{
-
-
-				int value=0;
-
-				ReadProcessMemory(hProc, temp_object->addr, &value, sizeof(DWORD),NULL);
-				printf("ADDR : 0x%p\tValue_int %d\n", temp_object->addr, value);
-
-				break;
-			}
-		default:
+		if (is_string)
 		{
 			char* buff = malloc(1 + sizeof(char) * temp_object->type_size);
+			if (buff == NULL)
+			{
+				printf("Error in malloc");
+				exit(0);
+			}
 			buff[temp_object->type_size] = '\0';
-			ReadProcessMemory(hProc, temp_object->addr, buff, temp_object->type_size ,NULL);
+			ReadProcessMemory(hProc, temp_object->addr, buff, temp_object->type_size, NULL);
 			printf("ADDR : 0x%p\tValue_string %s\n", temp_object->addr, buff);
-
+			free(buff);
 		}
+		else
+		{
 
-			break;
+			switch (type_length)
+			{
+				case sizeof(char) :
+				{
+					char value = 0;
+					ReadProcessMemory(hProc, temp_object->addr, &value, sizeof(CHAR), NULL);					printf("ADDR : 0x%p\tValue_char %c\n", temp_object->addr, value);
+					break;
+				}
+				case sizeof(int) :
+				{
+					int value = 0;
+
+					ReadProcessMemory(hProc, temp_object->addr, &value, sizeof(DWORD), NULL);
+					printf("ADDR : 0x%p\tValue_int %d\n", temp_object->addr, value);
+
+					break;
+				}
+
+				default:
+					break;
+			}
 		}
 		temp_object = temp_object->next;
-
 	}
 
 	printf("\nfinished printing\n");
@@ -217,9 +229,87 @@ void free_memory(memoryObject* first_object)
 	}
 }
 
-memoryObject* filter()
+
+
+
+void scanner()
 {
-	return NULL;
+}
+
+
+memoryObject* filter(int pid,char* type, char* value , memoryObject* list_head)
+{
+
+	if (pid == 0) {
+		printf("Pleas enter a valid pid - not zero\n");
+		return NULL;
+	}
+
+	BOOL is_string;
+	int type_length = get_type_length_from_string(type,value,&is_string);
+
+	if (type_length == 0) {
+		printf("Invalid type\nYou can enter only char int or string\n");
+		return NULL;
+	}
+
+	multitype val;
+	set_multitype(&val, type_length, value,is_string);
+
+	memoryObject* new_list_head= CreateMemoryObject(NULL, 0);
+	memoryObject* new_list_memory_object = new_list_head;
+
+	HANDLE hProc = NULL;
+
+
+	MemoryBlock* firstBlock = scan_proccess_memory(pid, &hProc);
+
+	MemoryBlock *Block = firstBlock;	read_process_memory_to_buff(Block);
+	while (list_head)
+	{
+		if (type_length == 4)
+		{
+			int value = 0;
+			ReadProcessMemory(hProc, list_head->addr, &value, type_length, NULL);			if (value == val.dword)
+			{	
+				memoryObject* mo = CreateMemoryObject(list_head->addr, type_length);
+				new_list_memory_object->next = mo;
+				new_list_memory_object = mo;
+			}
+
+		}
+
+		/*
+		if (type_length == STRING_TYPE_LENGTH)
+		{
+			//becuse strings are pointers and not "real" types they need to be threated deffrently
+			if (memcmp(list_head->addr, (&val)->string, type_length) == 0)
+			{
+				memoryObject* new_mo = CreateMemoryObject(list_head->addr, type_length);
+				new_list_memory_object->next = new_mo;
+				new_list_memory_object = new_mo;
+			}
+
+		}
+		else
+		{
+			printf("%p\n", list_head->addr);
+			if (memcmp(list_head->addr, &val, type_length) == 0)
+			{
+				memoryObject* mo = CreateMemoryObject(list_head->addr, type_length);
+				new_list_memory_object->next = mo;
+				new_list_memory_object = mo;
+
+			}
+		}
+		*/
+		list_head = list_head->next;
+	}
+	if (new_list_head->next != NULL)
+	{
+		print_values(new_list_head,type_length,hProc,is_string);
+	}
+	return new_list_head;
 }
 
 memoryObject* ScanMemory(int pid, char* type, char* value)
@@ -229,25 +319,23 @@ memoryObject* ScanMemory(int pid, char* type, char* value)
 		printf("Pleas enter a valid pid - not zero\n");
 		return NULL;
 	}
-
-	int type_length = get_type_length_from_string(type);
+	BOOL is_string;
+	int type_length = get_type_length_from_string(type,value,&is_string);
 
 	if (type_length == 0) {
 		printf("Invalid type\nYou can enter only char int or string\n");
 		return NULL;
 	}
 	multitype val;
-	set_multitype(&val, type_length, value);
+	set_multitype(&val, type_length, value,is_string);
 
 	memoryObject* first_object = CreateMemoryObject(NULL, 0);
-	memoryObject* memory_object;
+	
+	HANDLE hProc = NULL;
+	MemoryBlock *firstBlock = scan_proccess_memory(pid, &hProc);
+	MemoryBlock *Block = firstBlock;	read_process_memory_to_buff(Block);	first_object = SearchValue(firstBlock, first_object, type_length ,&val, is_string);
 
-	MemoryBlock *firstBlock;	HANDLE hProc=NULL;
-	firstBlock = ScanProcess(pid, &hProc);
-
-	MemoryBlock *Block = firstBlock;	read_process_memory_to_buff(Block);	first_object = SearchValue(firstBlock, first_object, type_length ,&val);
-
-	print_values(first_object,type_length, hProc);	return first_object;}
+	print_values(first_object,type_length, hProc,is_string);	return first_object;}
 void change_value(int pid, char* addr, char* type, char* new_value)
 {
 	//make addr hex value
@@ -255,9 +343,11 @@ void change_value(int pid, char* addr, char* type, char* new_value)
 	long address;
 	address = strtol(addr, &ptr, 16);
 
-	int type_length = get_type_length_from_string(type);
+	BOOL is_string;
+	int type_length = get_type_length_from_string(type, new_value, &is_string);
+
 	multitype val;
-	set_multitype(&val, type_length, new_value);
+	set_multitype(&val, type_length, new_value,is_string);
 
 	int bytes_writen;
 
@@ -266,10 +356,7 @@ void change_value(int pid, char* addr, char* type, char* new_value)
 	{
 		printf("Error in OpenProcess for writing");
 	}
-	if (type_length == STRING_TYPE_LENGTH)
-	{
-		//WriteProcessMemory(hProc, address, (LPVOID)&new_value, strlen(((multitype*)val)->string), &bytes_writen);
-	}
+
 	else
 	{
 		WriteProcessMemory(hProc, address, &val, type_length, &bytes_writen);
