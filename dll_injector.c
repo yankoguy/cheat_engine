@@ -25,7 +25,7 @@ int inject_dll(char* pName)
 	}
 
 	//Get pid by name
-	DWORD pid = FindProcessId(pName);
+	DWORD pid = find_process_id(pName);
 	if (pid == 0)
 	{
 		printf("Error counld not found a process with this name\n");
@@ -72,7 +72,7 @@ int inject_dll(char* pName)
 	return 1;
 }
 
-DWORD FindProcessId(const char *processname)
+DWORD find_process_id(const char *processname)
 {
 	HANDLE hProcessSnap;
 	PROCESSENTRY32 pe32;
