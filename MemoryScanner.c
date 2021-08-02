@@ -430,6 +430,7 @@ void earse_saved_memory_object(memoryObject* list_head, char* str_index_to_earse
 			memory_object = memory_object->next;
 
 			free(temp);
+			//
 		}
 		else 
 		{
