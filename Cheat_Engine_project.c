@@ -13,37 +13,133 @@
 #include "utilities.h"
 #include "program_main_params.h"
 
-enum ACTION { NO_ACTION, SCAN, CHANGE, FILTER, SAVE, PRINT, EARSE};
-enum STATE { COMMAND_STATE, DLL_STATE };
+enum USER_ACTION { NO_ACTION, SCAN, CHANGE, FILTER, SAVE, PRINT, ERASE, START, HELP,PAUSE,RESUME,INJECT};
+enum CONFIGURATION_ACTION {SET_FILE_NAME, DLL_TO_INJECT };
 
-void process_command(char** parsed_str, int argc);
-int process_dll_command(char* opcode, int argc);
+
+int process_command(char* opcode, int argc);
 void scan(char** parsed_str, int argc, char* pBuf);
-void help(char** parsed_str, int argc);
+void help();
 char* get_user_input();
 void start_injection(char ** parsedString, int* state);
 LPSTR create_shared_memory();
-HANDLE start(char** parsed_str, int argc);
 char* get_user_raw_input();
 void program_loop();
 void run_action(int action, char** parames, char* pBuf, SCAN_INFORMATION* info);
-
+void set_program_by_configuration_file(SCAN_INFORMATION* info);
+int process_configuration_file_line(char* opcode, int argc);
+void run_configuration_file_actions(SCAN_INFORMATION* info, int action, char** parames);
+void start(SCAN_INFORMATION* info, char* program_name);
+void set_scan_information(SCAN_INFORMATION* info);
 
 int main()
 {	
 	SCAN_INFORMATION info;
-	info.saved_scans = create_memory_object(NULL,0,0,FALSE);
-	info.addresses_list_head = NULL;
-	info.pid = 0;
-
+	set_scan_information(&info);
 	program_loop(&info);
 	return 0;
 }
 
+void set_scan_information(SCAN_INFORMATION* info)
+{
+	info->saved_scans = create_memory_object(NULL, 0, 0, FALSE,"");
+	info->addresses_list_head = NULL;
+	info->pid = 0;
+	info->hproc = NULL;
+	info->program_state = RUNNING;
+	set_program_by_configuration_file(info);
+}
+
+
+void set_program_by_configuration_file(SCAN_INFORMATION* info)
+{
+	char buff[BUF_SIZE];
+	char line[BUF_SIZE];
+
+	HANDLE source = CreateFileA(CONFIGURATION_FILE_NAME, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (source == INVALID_HANDLE_VALUE) {
+		printf("Source file not opened. Error %u", GetLastError());
+		return;
+	}
+
+	int letter_read = 0;
+
+	if (!ReadFile(source, buff, sizeof(buff), &letter_read, NULL)) {
+		printf("Source file not read from. Error %u", GetLastError());
+		return;
+	}
+	
+	buff[letter_read] = '\0';
+
+	
+	int number_of_lines = 0;
+	char** lines = parse_string(buff, '\n', &number_of_lines, 0); //need to be freed
+	for (int i = 0; i < number_of_lines; i++)
+	{
+		if (i != number_of_lines - 1) //if it is not last place
+		{
+			lines[i][strlen(lines[i]) - 1] = '\0'; //change the '\r' at the end of the line to '\0'
+		}
+	
+		int argc=0;
+		char** params = parse_string(lines[i], ':', &argc, '"'); //need to be freed
+		run_configuration_file_actions(info,process_configuration_file_line(params[0],argc),params);
+		for (int i = 0; i < argc; i++)
+		{
+			free(params[i]);
+		}
+		free(lines[i]);
+	}
+
+
+	CloseHandle(source);
+	//free stuff
+}
+
+
+int process_configuration_file_line(char* opcode, int argc)
+{
+	if (strcmp(opcode, "file_name") == 0)
+	{
+		if (argc == 2)
+		{
+			return SET_FILE_NAME;
+		}
+		else
+		{
+			printf("Error in configuration : file_name\n");
+		}
+	}
+	else if (strcmp(opcode, "dll_to_inject") == 0)
+	{
+		if (argc == 2)
+		{
+			return DLL_TO_INJECT;
+		}
+		else
+		{
+			printf("Error in configutation : dll_to_inject\n");
+		}
+	}
+}
+
+void run_configuration_file_actions(SCAN_INFORMATION* info,int action, char** parames)
+{
+	switch (action)
+	{
+	case SET_FILE_NAME:
+		start(info,parames[1]);
+		break;
+	case DLL_TO_INJECT:
+		inject_dll(info->pid, parames[1]);
+	default:
+		break;
+	}
+}
+
+
 void program_loop(SCAN_INFORMATION* info)
 {
-	int state = COMMAND_STATE; //should be COMMAND_STATE at first
-
 	char* pBuf = create_shared_memory(); //create shared memory which will be used later to communicate with the dll
 	char* inputBuff;
 	char** parsedString;
@@ -54,36 +150,10 @@ void program_loop(SCAN_INFORMATION* info)
 	{
 		inputBuff = get_user_input();
 		parsedString = parse_string(inputBuff, ' ', &argc, '"');
-		switch (state)
+		if (parsedString != NULL)
 		{
-		case DLL_STATE:
-			run_action(process_dll_command(parsedString[0], argc),parsedString,pBuf,info);
-			break;
-		case COMMAND_STATE:
-		{
-			if (strcmp(parsedString[0], "start") == 0) //check if user typed start which means he now on the DLL_STATE (dll was injected)
-			{
-				info->pid = find_process_id(parsedString[1]);
-				if (info->pid != 0)
-				{
-					state = DLL_STATE;
-					info->hproc = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_VM_OPERATION, 0, info->pid);
-					if (info->hproc == NULL)
-					{
-						printf("Error in OpenProcess\n");
-						return 0;
-					}
-				}
-				//start_injection(parsedString,&state);
-			}
-			process_command(parsedString, argc);
-			break;
+			run_action(process_command(parsedString[0], argc), parsedString, pBuf, info);
 		}
-		default:
-			break;
-		}
-
-
 		/*free process*/
 		free(inputBuff);
 		for (int i = 0; i < argc; i++)
@@ -100,17 +170,33 @@ void program_loop(SCAN_INFORMATION* info)
 }
 
 
-void start_injection(char ** parsedString, int* state)
+void start(SCAN_INFORMATION* info, char* program_name)
 {
-
-	if (inject_dll(parsedString[1]) == 1)
+	if (info->pid == 0)
 	{
-		printf("dll injected\n");
-		*state = DLL_STATE;
+		info->pid = find_process_id(program_name);
+		if (info->pid != 0)
+		{
+			info->hproc = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_VM_OPERATION, 0, info->pid);
+			if (info->hproc == NULL)
+			{
+				printf("Error in OpenProcess\n");
+			}
+		}
+		else
+		{
+			printf("Could not find the process id\n");
+		}
+	}
+	else 
+	{
+		printf("You already in choose a program. If you want to choose another program type \"new\"\n");
 	}
 }
 
-int process_dll_command(char* opcode, int argc)
+
+
+int process_command(char* opcode, int argc)
 {
 	if (strcmp(opcode, "scan") == 0)
 	{
@@ -118,10 +204,8 @@ int process_dll_command(char* opcode, int argc)
 		{
 			return SCAN;
 		}
-		else
-		{
-			printf("For scan command you need to type [type] [value]\n");
-		}
+		printf("For scan command you need to type [type] [value]\n");
+
 	}
 	else if (strcmp(opcode, "change") == 0)
 	{
@@ -129,10 +213,8 @@ int process_dll_command(char* opcode, int argc)
 		{
 			return CHANGE;
 		}
-		else
-		{
-			printf("For change command you need to type [address] [type] [new value]\n");
-		}
+		printf("For change command you need to type [address] [type] [new value]\n");
+
 	}
 	else if (strcmp(opcode, "filter") == 0)
 	{
@@ -141,23 +223,19 @@ int process_dll_command(char* opcode, int argc)
 			return FILTER;
 
 		}
-		else
-		{
-			printf("For filter command you need to type [type] [value]\n");
-		}
+		printf("For filter command you need to type [type] [value]\n");
+
 
 	}
 	else if (strcmp(opcode, "save") == 0)
 	{
-		if (argc == 2)
+		if (argc == 3)
 		{
 			return SAVE;
 
 		}
-		else
-		{
-			printf("For save command you need to type [index]\n");
-		}
+		printf("For save command you need to type [index] [name]\n");
+
 	}
 	else if (strcmp(opcode, "print") == 0)
 	{
@@ -166,29 +244,60 @@ int process_dll_command(char* opcode, int argc)
 			return PRINT;
 
 		}
-		else
-		{
-			printf("For print command you do not need any arguments\n");
-		}
+		printf("For print command you do not need any arguments\n");
+
 	}
-	else if (strcmp(opcode, "earse") == 0)
+	else if (strcmp(opcode, "erase") == 0)
 	{
 		if (argc == 2)
 		{
-			return EARSE;
+			return ERASE;
+		}
+		printf("For delete command you need to type [index]\n");
 
-		}
-		else
+	}
+	else if (strcmp(opcode, "start")==0)
+	{
+		if (argc == 2)
 		{
-			printf("For delete command you need to type [index]\n");
+			return START;
 		}
+		printf("For start comamnd you need to type [program_name]\n");
+
+
+	}
+	else if (strcmp(opcode, "pause") == 0)
+	{
+		if (argc == 1)
+		{
+			return PAUSE;
+		}
+		printf("For pausing the game just type pause");
+
+	}
+	else if (strcmp(opcode, "resume") == 0)
+	{
+		if (argc == 1)
+		{
+			return RESUME;
+		}
+		printf("For pausing the game just type resume");
+
+	}
+	else if (strcmp(opcode, "inject") == 0)
+	{
+		if (argc == 2)
+		{
+			return INJECT;
+		}
+		printf("For injecting dll to game enter dll name pls\n");
+
 	}
 	return NO_ACTION;
 }
 
 void run_action(int action, char** parames, char* pBuf, SCAN_INFORMATION* info)
 {
-
 	switch (action)
 	{
 	case SCAN:
@@ -209,35 +318,59 @@ void run_action(int action, char** parames, char* pBuf, SCAN_INFORMATION* info)
 			info->addresses_list_head = filter(parames[1], parames[2], info->addresses_list_head->next, info->hproc);
 			free_memory(temp); //free the memory
 		}
+		else {
+			printf("You need to scan first in order to filter\n");
+		}
 		break;
 	}
 	case SAVE:
-		if (save_value(info->saved_scans,info->addresses_list_head,parames[1]) == 0)
+		if (save_value(info->saved_scans,info->addresses_list_head,parames[1],parames[2]) == 0)
 		{
-			printf("Could not find value with index");
+			printf("Could not scan");
 		}
 		break;
 	case PRINT:
-		print_values(info->saved_scans, info->saved_scans->next->type_size,info->hproc,info->saved_scans->is_string);
+		if (info->saved_scans->next != NULL)
+		{
+			print_values(info->saved_scans, info->hproc);
+		}
+		else
+		{
+			printf("Error could not print - you first need to save scan values\n");
+
+		}
 		break;
-	case EARSE:
-		earse_saved_memory_object(info->saved_scans,parames[1]);
+	case ERASE:
+		erase_saved_memory_object(info->saved_scans,parames[1]);
 		break;
+	case START:
+		start(info, parames[1]);
+		break;
+	case HELP:
+		help();
+		break;
+	case PAUSE:
+		if (pause_program(info->pid, info->program_state) == 1)
+		{
+			info->program_state = PAUSING;
+		}
+		break;
+	case RESUME:
+		if (resume_program(info->pid, info->program_state) == 1)
+		{
+			info->program_state = RUNNING;
+		}
+		break;
+	case INJECT:
+		if (inject_dll(info->pid,parames[1]) == 0)
+		{
+			printf("Could not inject dll\n");
+		}
 	default:
-		printf("Pls enter the action you want to take");
 		break;
 	}	
 
 }
-
-void process_command(char** parsed_str, int argc)
-{
-	if (strcmp(parsed_str[0], "help") == 0)
-	{
-		help(parsed_str, argc - 1);
-	}
-}
-
 
 
 
@@ -264,9 +397,9 @@ void scan(char** parsed_str, int argc,char* pBuf)
 
 }
 
-void help(char** parsed_str, int argc)
+void help()
 {
-	printf("You can use this CE to scan varibles in a game.\nyour poitions are:\nscan\n");
+	printf("You can use this CE to scan varibles in a game.\nyour poitions are:\nstart\nscan\nchange\nfilter\nsave\nerase\nprint\npause\nresume");
 }
 
 LPSTR create_shared_memory() {

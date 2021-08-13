@@ -1,0 +1,2 @@
+file_name:circle_shooter.exe
+dll_to_inject:"C:\Users\Maor\Documents\Visual Studio 2015\Projects\View_game_files_cheat\Debug\View_game_files_cheat.dll"

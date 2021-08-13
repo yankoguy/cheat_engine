@@ -10,22 +10,25 @@
 #include "core_parameters.h"
 
 typedef void(*PFUNC)(void);
+#define FILENAME "C:\\Users\\Maor\\Documents\\Visual Studio 2015\\Projects\\project_to_iat_hooking\\file.txt"
 
-int inject_dll(char* pName)
-{						
-	CHAR* dll_path = "C:\\Users\\Maor\\Documents\\Visual Studio 2015\\Projects\\Cheat_Engine_project\\Debug\\CE_dll.dll";
+int inject_dll(int pid, char* dll_path)
+{					
+	if (pid == 0)
+	{
+		printf("Error in dll injection - no process selected to\n");
+		return 0;
+	}
 	// Get LoadLibrary function address –	
 	// the address doesn't change at remote process
 	PVOID addrLoadLibrary =
-		(PVOID)GetProcAddress(GetModuleHandleA("kernel32.dll"),
-			"LoadLibraryA");
+		(PVOID)GetProcAddress(GetModuleHandleA("kernel32.dll"),"LoadLibraryA");
 	if (addrLoadLibrary == NULL) {
 		printf("ERROR in GetProcAddress\n");
 		return 0;
 	}
 
 	//Get pid by name
-	DWORD pid = find_process_id(pName);
 	if (pid == 0)
 	{
 		printf("Error counld not found a process with this name\n");
@@ -67,10 +70,13 @@ int inject_dll(char* pName)
 	}
 	
 
-	//WaitForSingleObject(hRemote, INFINITE);
+	WaitForSingleObject(hRemote, INFINITE);
+
 	CloseHandle(hRemote);
 	return 1;
 }
+
+
 
 DWORD find_process_id(const char *processname)
 {
